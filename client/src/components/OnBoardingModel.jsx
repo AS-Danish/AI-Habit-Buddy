@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faRunning, faAppleAlt, faBrain } from '@fortawesome/free-solid-svg-icons';
+import axios from 'axios';
+import { useUser } from '@clerk/clerk-react';
 
 // Function to generate a random color
 const generateRandomColor = () => {
@@ -16,21 +18,15 @@ const generateRandomColor = () => {
 const getTextColor = (bgColor) => {
   switch (bgColor) {
     case 'bg-blue-400':
-      return 'text-white';
     case 'bg-green-400':
-      return 'text-white';
     case 'bg-teal-400':
-      return 'text-white';
     case 'bg-purple-400':
-      return 'text-white';
     case 'bg-indigo-400':
+    case 'bg-red-400':
       return 'text-white';
     case 'bg-yellow-400':
-      return 'text-gray-800'; 
     case 'bg-pink-400':
       return 'text-gray-800';
-    case 'bg-red-400':
-      return 'text-white'; 
     default:
       return 'text-white';
   }
@@ -39,6 +35,9 @@ const getTextColor = (bgColor) => {
 const OnBoardingModal = ({ isOpen, onClose }) => {
   const [colors, setColors] = useState([]);
   const [currentQuestion, setCurrentQuestion] = useState(0);
+  const [answers, setAnswers] = useState([]); // Store answers
+  const { user } = useUser();
+  const userId = user ? String(user.id) : null;
 
   // Generate unique colors for the options whenever the question changes
   useEffect(() => {
@@ -50,7 +49,7 @@ const OnBoardingModal = ({ isOpen, onClose }) => {
       }
     }
     setColors(uniqueColors);
-  }, [currentQuestion]); // Dependency array ensures colors change when the question changes
+  }, [currentQuestion]);
 
   // Questions for the onboarding process
   const questions = [
@@ -83,15 +82,38 @@ const OnBoardingModal = ({ isOpen, onClose }) => {
     }
   ];
 
-  const handleNext = () => {
+  const handleNext = (selectedAnswer) => {
+    const currentQuestionData = questions[currentQuestion];
+    
+    // Append the new answer to the answers array
+    const updatedAnswers = [...answers, { question: currentQuestionData.question, answer: selectedAnswer }];
+    
+    setAnswers(updatedAnswers); // Update the state
+    
     if (currentQuestion < questions.length - 1) {
       setCurrentQuestion(currentQuestion + 1);
     } else {
-      onClose(); // Close the modal when it's the last question
+      // Send the answers to the backend when the user finishes the last question
+      if (userId) {
+        axios.post('http://localhost:5000/api/onboarding', { userId, answers: updatedAnswers }) // Send updated answers
+          .then(response => {
+            console.log('Onboarding data stored:', response.data);
+            onClose(); // Close the modal after data is submitted
+          })
+          .catch(error => {
+            console.error('Error storing onboarding data:', error);
+          });
+      } else {
+        onClose(); // Close the modal if no userId is found
+      }
     }
   };
+  
+  
+  
+  
 
-  if (!isOpen) return null; // Don't render if not open
+  if (!isOpen) return null;
 
   const currentQ = questions[currentQuestion];
 
@@ -106,7 +128,7 @@ const OnBoardingModal = ({ isOpen, onClose }) => {
           {currentQ.question}
         </p>
 
-        {/* Single Icon with Option Text */}
+        {/* Display options for the current question */}
         <div className="grid grid-cols-2 gap-6">
           {colors.map((color, index) => {
             const textColor = getTextColor(color);
@@ -115,7 +137,8 @@ const OnBoardingModal = ({ isOpen, onClose }) => {
             return (
               <div
                 key={index}
-                className={`flex items-center justify-center ${color} p-6 rounded-lg shadow-md hover:scale-105 transition-all`}
+                className={`flex items-center justify-center ${color} p-6 rounded-lg shadow-md hover:scale-105 transition-all cursor-pointer`}
+                onClick={() => handleNext(option.label)} // Pass the selected answer
               >
                 <FontAwesomeIcon icon={option.icon} className={`text-6xl mr-4 ${textColor}`} />
                 <span className={`font-bold text-xl ${textColor}`}>
@@ -129,7 +152,7 @@ const OnBoardingModal = ({ isOpen, onClose }) => {
         <div className="flex justify-end mt-8">
           <button
             className="bg-pink-500 text-white px-8 py-3 rounded-full text-lg font-bold hover:bg-pink-600 transition-all duration-300"
-            onClick={handleNext}
+            onClick={() => handleNext('Skipped')} // Handle skipped questions
           >
             {currentQuestion === questions.length - 1 ? '🚀 Let’s Go!' : 'Next'}
           </button>
